@@ -10,6 +10,36 @@ from ..tools.view_gcn_utils import KNN_dist, View_selector, LocalGCN, NonLocalMP
 mean = torch.tensor([0.485, 0.456, 0.406],dtype=torch.float, requires_grad=False)
 std = torch.tensor([0.229, 0.224, 0.225],dtype=torch.float, requires_grad=False)
 
+_TORCHVISION_WEIGHTS_ENUM = {
+    "resnet18": "ResNet18_Weights",
+    "resnet34": "ResNet34_Weights",
+    "resnet50": "ResNet50_Weights",
+    "alexnet": "AlexNet_Weights",
+    "vgg11_bn": "VGG11_BN_Weights",
+    "vgg16": "VGG16_Weights",
+}
+
+
+def _torchvision_model(model_name: str, pretrained: bool):
+    """
+    Torchvision changed from `pretrained=...` to `weights=...`.
+    Keep compatibility across torchvision releases.
+    """
+    pretrained = bool(pretrained)
+    ctor = getattr(models, model_name)
+    if pretrained:
+        try:
+            weights_enum = getattr(models, _TORCHVISION_WEIGHTS_ENUM[model_name])
+            return ctor(weights=weights_enum.DEFAULT)
+        except Exception:
+            return ctor(pretrained=True)
+    else:
+        try:
+            return ctor(weights=None)
+        except TypeError:
+            return ctor(pretrained=False)
+
+
 def flip(x, dim):
     xsize = x.size()
     dim = x.dim() + dim if dim < 0 else dim
@@ -35,24 +65,27 @@ class SVCNN(Model):
 
         if self.use_resnet:
             if self.cnn_name == 'resnet18':
-                self.net = models.resnet18(pretrained=self.pretraining)
+                self.net = _torchvision_model('resnet18', self.pretraining)
                 self.net.fc = nn.Linear(512, self.nclasses)
             elif self.cnn_name == 'resnet34':
-                self.net = models.resnet34(pretrained=self.pretraining)
+                self.net = _torchvision_model('resnet34', self.pretraining)
                 self.net.fc = nn.Linear(512, self.nclasses)
             elif self.cnn_name == 'resnet50':
-                self.net = models.resnet50(pretrained=self.pretraining)
+                self.net = _torchvision_model('resnet50', self.pretraining)
                 self.net.fc = nn.Linear(2048, self.nclasses)
         else:
             if self.cnn_name == 'alexnet':
-                self.net_1 = models.alexnet(pretrained=self.pretraining).features
-                self.net_2 = models.alexnet(pretrained=self.pretraining).classifier
+                alex = _torchvision_model('alexnet', self.pretraining)
+                self.net_1 = alex.features
+                self.net_2 = alex.classifier
             elif self.cnn_name == 'vgg11':
-                self.net_1 = models.vgg11_bn(pretrained=self.pretraining).features
-                self.net_2 = models.vgg11_bn(pretrained=self.pretraining).classifier
+                vgg11 = _torchvision_model('vgg11_bn', self.pretraining)
+                self.net_1 = vgg11.features
+                self.net_2 = vgg11.classifier
             elif self.cnn_name == 'vgg16':
-                self.net_1 = models.vgg16(pretrained=self.pretraining).features
-                self.net_2 = models.vgg16(pretrained=self.pretraining).classifier
+                vgg16 = _torchvision_model('vgg16', self.pretraining)
+                self.net_1 = vgg16.features
+                self.net_2 = vgg16.classifier
 
             self.net_2._modules['6'] = nn.Linear(4096, self.nclasses)
 

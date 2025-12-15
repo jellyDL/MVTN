@@ -39,6 +39,33 @@ from viewGCN.tools.Trainer_mvt import ModelNetTrainer_mvt
 
 from viewGCN.model.view_gcn import view_GCN, SVCNN
 
+
+def _torchvision_model(model_name: str, pretrained: bool):
+    """
+    Torchvision changed from `pretrained=...` to `weights=...` (and removed
+    positional args) in newer versions. This helper keeps compatibility across
+    torchvision releases.
+    """
+    pretrained = bool(pretrained)
+    ctor = torchvision.models.__dict__[model_name]
+    if pretrained:
+        # Prefer the modern weights API when available.
+        try:
+            if model_name.startswith("resnet"):
+                depth = model_name.replace("resnet", "")
+                weights_enum = getattr(torchvision.models, f"ResNet{depth}_Weights")
+            else:
+                # Fallback: let older torchvision handle it via `pretrained=True`.
+                raise AttributeError("weights enum not mapped")
+            return ctor(weights=weights_enum.DEFAULT)
+        except Exception:
+            return ctor(pretrained=True)
+    else:
+        try:
+            return ctor(weights=None)
+        except TypeError:
+            return ctor(pretrained=False)
+
 PLOT_SAMPLE_NBS = [242, 7, 549, 112, 34]
 
 
@@ -119,15 +146,15 @@ if setup["mvnetwork"] == "mvcnn":
     depth2featdim = {18: 512, 34: 512, 50: 2048, 101: 2048, 152: 2048}
     assert setup["depth"] in list(
         depth2featdim.keys()), "the requested resnt depth not available"
-    mvnetwork = torchvision.models.__dict__[
-        "resnet{}".format(setup["depth"])](setup["pretrained"])
+    mvnetwork = _torchvision_model(
+        "resnet{}".format(setup["depth"]), setup["pretrained"])
     mvnetwork.fc = nn.Sequential()
     mvnetwork = MVAgregate(mvnetwork, agr_type="max",
                            feat_dim=depth2featdim[setup["depth"]], num_classes=len(classes))
     print('Using ' + setup["mvnetwork"] + str(setup["depth"]))
 if setup["mvnetwork"] == "rotnet":
-    mvnetwork = torchvision.models.__dict__["resnet{}".format(
-        setup["depth"])](pretrained=setup["pretrained"])
+    mvnetwork = _torchvision_model(
+        "resnet{}".format(setup["depth"]), setup["pretrained"])
     mvnetwork = RotationNet(mvnetwork, "resnet{}".format(
         setup["depth"]), (len(classes)+1) * setup["nb_views"])
 if setup["mvnetwork"] == "viewgcn":
@@ -758,7 +785,7 @@ if setup["mvnetwork"] == "mvcnn":
         from tqdm import tqdm
         torch.multiprocessing.set_sharing_strategy('file_system')
 
-        print('\Evaluatiing om the cropped data :')
+        print('Evaluating on the cropped data:')
 
         override = True
         networks_list = ["MVTN"]

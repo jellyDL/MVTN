@@ -676,11 +676,11 @@ class PartNormalDataset(torch.utils.data.Dataset):
 
         if true_nb_points >= self.npoints:
             choice = np.arange(self.npoints)
-            real_points_mask = np.ones(self.npoints, dtype=np.int)
+            real_points_mask = np.ones(self.npoints, dtype=int)
         else:
-            choice = np.ones(self.npoints, dtype=np.int) * (true_nb_points-1)
+            choice = np.ones(self.npoints, dtype=int) * (true_nb_points-1)
             choice[:true_nb_points] = np.arange(true_nb_points)
-            real_points_mask = np.zeros(self.npoints, dtype=np.int)
+            real_points_mask = np.zeros(self.npoints, dtype=int)
             real_points_mask[:true_nb_points] = 1
 
         point_set = point_set[choice, :]
