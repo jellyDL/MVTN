@@ -6,7 +6,7 @@ import sys
 from util import *
 import shutil
 from torch import nn
-from torch._six import inf
+from math import inf
 
 from pytorch3d.renderer import look_at_view_transform
 

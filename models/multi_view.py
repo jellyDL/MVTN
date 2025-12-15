@@ -9,7 +9,6 @@ from util import batch_tensor, unbatch_tensor
 import torch
 import numpy as np
 from torch import nn
-from torch._six import inf
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 

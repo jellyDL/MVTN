@@ -1,0 +1,24 @@
+# Core runtime dependencies (PyTorch / PyTorch3D are installed separately; see README)
+
+# General
+numpy>=1.26,<3
+scipy>=1.11,<2
+pandas>=2.1,<3
+PyYAML>=6.0.1,<7
+tqdm>=4.66,<5
+
+# Data / IO
+h5py>=3.10,<4
+pillow>=10.3,<12
+imageio>=2.34,<3
+
+# Geometry / rendering helpers
+trimesh>=4.4,<5
+einops>=0.7,<1
+
+# Logging / metrics
+tensorboard>=2.16,<3
+metric-learn>=0.7,<1
+
+# Plotting (used by util.py; safe for headless via Agg)
+matplotlib>=3.8,<4

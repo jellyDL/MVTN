@@ -25,25 +25,41 @@ If you find our work useful in your research, please consider citing:
 
 
 
-## Requirement
-This code is tested with Python 3.7 and Pytorch >= 1.5
+## Dependencies / Installation
 
-- install [Pytorch3d](https://github.com/facebookresearch/pytorch3d/blob/master/INSTALL.md) as follows
-```bash
-conda create -y -n MVTN python=3.7
-conda activate MVTN
-conda install -c pytorch pytorch=1.7.1 torchvision cudatoolkit=10.2
-conda install -c fvcore -c iopath -c conda-forge fvcore iopath
-conda install -c bottler nvidiacub
-conda install pytorch3d -c pytorch3d
-``` 
-- install other helper libraries 
+This repository is from 2021 and the original instructions were for **Python 3.7 / PyTorch 1.x**.  
+For a smoother install today, we recommend **Python 3.11** and a **PyTorch 2.x** stack.
+
+### Option A (recommended): Conda / Mamba
+
+`pytorch3d` is easiest to install via conda.
 
 ```bash
-conda install pandas
-conda install -c conda-forge trimesh
-pip install einops imageio scipy matplotlib tensorboard h5py metric-learn
-``` 
+conda env create -f environment.yml
+conda activate mvtn
+```
+
+### Option B: venv + pip
+
+1) Create a Python 3.11 environment (recommended; PyTorch3D support for Python 3.12 can lag behind):
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip setuptools wheel
+```
+
+2) Install **PyTorch + torchvision** for your CUDA/CPU setup by following the official selector:
+`https://pytorch.org/get-started/locally/`
+
+3) Install the remaining dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+4) Install **PyTorch3D** by following the official instructions:
+`https://github.com/facebookresearch/pytorch3d/blob/main/INSTALL.md`
 
 ## Usage: 3D Classification & Retrieval
 
@@ -59,7 +75,7 @@ First, download the datasets and unzip them inside the `data/` directories as fo
 
 Then you can run MVTN with 
 ```bash
-python run_mvtn.py --data_dir data/ModelNet40/ --run_mode train --mvnetwork mvcnn --nb_views 8 --views_config learned_spherical  
+python run_mvtn.py --data_dir data/ModelNet40/ --run_mode train --mvnetwork mvcnn --nb_views 8 --views_config learned_spherical
 ```
 - `--data_dir` the data directory. The dataloader is picked adaptively from `custom_dataset.py` based on the choice between "ModelNet40", "ShapeNetCore.v2", or the "ScanObjectNN" choice.
 - `--run_mode` is the run mode. choices: "train"(train for classification), "test_cls"(test classification after training), "test_retr"(test retrieval after training), "test_rot"(test rotation robustness after training), "test_occ"(test occlusion robustness after training)

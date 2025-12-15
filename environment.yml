@@ -1,0 +1,28 @@
+name: mvtn
+channels:
+  - pytorch
+  - nvidia
+  - pytorch3d
+  - conda-forge
+dependencies:
+  - python=3.11
+  # Pick the correct CUDA runtime for your machine. For CPU-only, remove these two lines.
+  - pytorch
+  - torchvision
+  - pytorch-cuda=12.1
+  - pytorch3d
+
+  # Non-torch deps
+  - numpy
+  - scipy
+  - pandas
+  - pyyaml
+  - tqdm
+  - h5py
+  - pillow
+  - imageio
+  - trimesh
+  - einops
+  - tensorboard
+  - metric-learn
+  - matplotlib
