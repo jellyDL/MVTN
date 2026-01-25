@@ -90,10 +90,7 @@ class MVRenderer(nn.Module):
             image_size=self.image_size,
             blur_radius=0.0,
             faces_per_pixel=self.faces_per_pixel,
-
-
-
-
+            bin_size=0,
             cull_backfaces=self.cull_backfaces,
         )
         renderer = MeshRenderer(

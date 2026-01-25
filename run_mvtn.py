@@ -90,7 +90,7 @@ parser.add_argument('--object_color', '-clr',  default="white", choices=["white"
                     help='the selection type of views ')
 parser.add_argument('--epochs', default=100, type=int,
                     help='number of total epochs to run (default: 100)')
-parser.add_argument('--batch_size', '-b', default=20, type=int,
+parser.add_argument('--batch_size', '-b', default=10, type=int,
                     help='mini-batch size (default: 20)')
 parser.add_argument('-r', '--resume', dest='resume',
                     action='store_true', help='continue training from the `setup[weights_file] checkpoint ')
@@ -110,6 +110,7 @@ else:
 
 print('Loading data')
 
+print("setup[weght_file]", setup["weights_file"])
 
 torch.cuda.set_device(int(setup["gpu"]))
 if "modelnet" in setup["data_dir"].lower():
@@ -240,7 +241,7 @@ def train(data_loader, models_bag, setup):
                     x.grad.cpu().numpy() ** 2) for x in models_bag["mvnetwork"].parameters()])), step)
 
         if (i + 1) % setup["print_freq"] == 0:
-            print("\tIter [%d/%d] Loss: %.4f" %
+            print("\tTrain Iter [%d/%d] Loss: %.4f" %
                   (i + 1, train_size, loss.item()))
         correct += (predicted.cpu() == targets.cpu()).sum()
         total_loss += loss.item()
@@ -340,7 +341,7 @@ def train_rotationNet(data_loader, models_bag, setup):
         top1.update(prec1.item(), c_batch_size)
 
         if (i + 1) % setup["print_freq"] == 0:
-            print("\tIter [%d/%d] Loss: %.4f" %
+            print("\tTrain RotationNet Iter [%d/%d] Loss: %.4f" %
                   (i + 1, train_size, loss.item()))
 
         total_loss += loss.item()
@@ -623,7 +624,6 @@ def view_gcn_exp(setup, models_bag, train_loader, val_loader, dset_val):
     if setup["log_metrics"]:
         trainer.writer.close()
 
-
 if setup["resume"] or "test" in setup["run_mode"]:
     if setup["mvnetwork"] in ["mvcnn", "rotnet"]:
         load_checkpoint(setup, models_bag, setup["weights_file"])
@@ -654,12 +654,12 @@ if setup["mvnetwork"] == "mvcnn":
 
             print('\nEvaluation:')
             print('\ttrain acc: %.2f - train Loss: %.4f' %
-                  (avg_train_acc.item(), avg_train_loss.item()))
+                  (avg_train_acc.item(), avg_train_loss))
             print('\tVal Acc: %.2f - val Loss: %.4f' %
                   (avg_test_acc.item(), avg_loss))
             print('\tCurrent best val acc: %.2f' % setup["best_acc"])
             if setup["log_metrics"]:
-                writer.add_scalar('Loss/train', avg_train_loss.item(), epoch)
+                writer.add_scalar('Loss/train', avg_train_loss, epoch)
                 writer.add_scalar('Loss/val', avg_loss, epoch)
                 writer.add_scalar('Accuracy/train',
                                   avg_train_acc.item(), epoch)
@@ -675,6 +675,7 @@ if setup["mvnetwork"] == "mvcnn":
 
                          }
             if setup["save_all"]:
+                print("\tSaving checkpoint:", setup["weights_file"]) 
                 save_checkpoint(saveables, setup, views_record,
                                 setup["weights_file"])
 
@@ -905,7 +906,7 @@ elif setup["mvnetwork"] == "rotnet":
                 train_loader, models_bag, setup)
             print('Time taken: %.2f sec.' % (time.time() - start))
             print('\ttrain acc: %.2f - train Loss: %.4f' %
-                  (avg_train_acc, avg_train_loss.item()))
+                  (avg_train_acc, avg_train_loss))
             models_bag["mvnetwork"].eval()
             models_bag["mvtn"].eval()
             models_bag["mvrenderer"].eval()
@@ -919,7 +920,7 @@ elif setup["mvnetwork"] == "rotnet":
               (avg_test_acc, avg_loss))
         print('\tCurrent best val acc: %.2f' % setup["best_acc"])
         if setup["log_metrics"] and setup["run_mode"] == "train":
-            writer.add_scalar('Loss/train', avg_train_loss.item(), epoch)
+            writer.add_scalar('Loss/train', avg_train_loss, epoch)
             writer.add_scalar('Loss/val', avg_loss, epoch)
             writer.add_scalar('Accuracy/train', avg_train_acc, epoch)
             writer.add_scalar('Accuracy/val', avg_test_acc, epoch)
