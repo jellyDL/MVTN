@@ -756,7 +756,6 @@ def gif_folder(data_dir, extension="jpg", duration=None):
     else:
         imageio.mimsave(os.path.join(data_dir, "animation.gif"),
                         image_collection, duration=duration)
-# mesh = PyntCloud.from_file("/media/hamdiaj/D/mywork/sublime/vgd/3d/ModelNet40/airplane/test/airplane_0627.off")
 
 
 def check_folder(data_dir):

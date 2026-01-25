@@ -38,7 +38,121 @@ def rotation_matrix(axis, theta, in_degrees=True):
                      [2 * (bc - ad), aa + cc - bb - dd, 2 * (cd + ab)],
                      [2 * (bd + ac), 2 * (cd - ab), aa + dd - bb - cc]])
 
+class TeethData(Dataset):
 
+    def find_classes(self, dir):
+        classes = [d for d in os.listdir(
+            dir) if os.path.isdir(os.path.join(dir, d))]
+        classes.sort()
+        class_to_idx = {classes[i]: i for i in range(len(classes))}
+
+        return classes, class_to_idx
+
+    def __init__(self, data_dir, split, nb_points=2048, simplified_mesh=False, cleaned_mesh=False, dset_norm=2, return_points_saved=False, is_rotated=False):
+
+        self.y = []
+        self.data_list = []
+        self.split = split
+        self.nb_points = nb_points
+
+        self.data_dir = data_dir
+        self.simplified_mesh = simplified_mesh
+        self.cleaned_mesh = cleaned_mesh
+        self.dset_norm = dset_norm
+        self.return_points_sampled = not return_points_saved
+        self.return_points_saved = return_points_saved
+        self.initial_angle = -90
+
+        self.classes, self.class_to_idx = self.find_classes(self.data_dir)
+        
+        print("Classes found: ", self.classes)
+        print("class_to_idx found: ", self.class_to_idx)
+
+        self.is_rotated = is_rotated
+
+        for label in os.listdir(self.data_dir):
+            for item in os.listdir(self.data_dir + '/' + label + '/' + self.split):
+                print("Processing file: ", item, " in class: ", label)
+                if item.endswith(".stl"):
+                    self.y.append(self.class_to_idx[label])
+                    self.data_list.append(
+                        self.data_dir + '/' + label + '/' + self.split + '/' + item)
+
+        print("self.y: ", self.y)
+        print("self.data_list: ", self.data_list)
+        
+        self.simplified_data_list = [file_name.replace(
+            ".stl", "_SMPLER.obj") for file_name in self.data_list if file_name[-4::] == ".stl"]
+
+        self.points_list = [file_name.replace(
+            ".stl", "POINTS.pkl") for file_name in self.data_list if file_name[-4::] == ".stl"]
+        
+        self.data_list, self.simplified_data_list, self.y, self.points_list = sort_jointly(
+            [self.data_list, self.simplified_data_list, self.y, self.points_list], dim=0)
+
+        if self.is_rotated:
+            df = pd.read_csv(os.path.join(
+                self.data_dir, "..", "rotated__{}.csv".format(self.split)), sep=",")
+            self.rotations_list = [df[df.mesh_path.isin([x])].to_dict(
+                "list") for x in self.data_list]
+
+        self.correction_factors = [1]*len(self.data_list)
+                
+        if self.cleaned_mesh:
+            fault_mesh_list = load_text(os.path.join(
+                self.data_dir, "..", "{}_faults.txt".format(self.split)))
+            fault_mesh_list = [int(x) for x in fault_mesh_list]
+            for x in fault_mesh_list:
+                self.correction_factors[x] = -1
+
+    def __getitem__(self, index):
+
+        if not self.simplified_mesh:
+            threeobject = trimesh.load(self.data_list[index])
+
+        else:
+            threeobject = trimesh.load(self.simplified_data_list[index])
+
+        if not self.is_rotated:
+            angle = self.initial_angle
+            rot_axis = [1, 0, 0]
+        else:
+            angle = self.rotations_list[index]["rot_theta"][0]
+            rot_axis = [self.rotations_list[index]["rot_x"]
+                        [0], self.rotations_list[index]["rot_y"][0], self.rotations_list[index]["rot_z"][0]]
+
+        verts = np.array(threeobject.vertices.data.tolist())
+        faces = np.array(threeobject.faces.data.tolist())
+        if self.correction_factors[index] == -1 and self.cleaned_mesh and self.simplified_mesh:
+            faces[:, 0], faces[:, 2] = faces[:, 2], faces[:, 0]
+
+        verts = rotation_matrix(rot_axis, angle).dot(verts.T).T
+        verts = torch_center_and_normalize(torch.from_numpy(
+            verts).to(torch.float), p=self.dset_norm)
+        faces = torch.from_numpy(faces)
+
+        verts_rgb = torch.ones_like(verts)[None]
+        textures = Textures(verts_rgb=verts_rgb)
+        mesh = Meshes(
+            verts=[verts],
+            faces=[faces],
+            textures=textures
+        )
+        points = None
+        if self.return_points_sampled or self.return_points_saved:
+            if self.return_points_sampled:
+                points = threeobject.sample(self.nb_points, False)
+            else:
+                points = load_obj(self.points_list[index])
+            points = torch.from_numpy(rotation_matrix(
+                rot_axis, angle).dot(points.T).T).to(torch.float)
+            points = torch_center_and_normalize(points, p=self.dset_norm)
+
+        return self.y[index], mesh, points
+
+    def __len__(self):
+        return len(self.y)
+    
 class ModelNet40(Dataset):
 
     def find_classes(self, dir):

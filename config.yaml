@@ -1,4 +1,4 @@
-nb_points : 2048 # number of points in the 3d dataeset sampled from the meshes if `return_points_sampled` == `True` 
+nb_points : 4096 # number of points in the 3d dataeset sampled from the meshes if `return_points_sampled` == `True` 
 save_all : true  # help='save save the checkpoint and results at every epoch.... default saves only best test accuracy epoch'
 exp_set : "00"  # help='pick '
 exp_id : "0001"  # help='pick '
@@ -10,7 +10,7 @@ return_points_sampled : true  # help='reuturn 3d point clouds from the data load
 return_points_saved : false  # help='reuturn 3d point clouds from the data loader saved under `filePOINTS.pkl` '
 rotated_test : false  # help=' test on rotation noise on the meshes from ModelNet40 to make it realistic  '
 rotated_train : false # help=' train on rotation noise on the meshes from ModelNet40 to make it realistic  '
-simplified_mesh : true  # help='use simplified meshes in learning .. not the full meshes ... it ends in `_SMPLER.obj` '
+simplified_mesh : false  # help='use simplified meshes in learning .. not the full meshes ... it ends in `_SMPLER.obj` '
 cleaned_mesh : true  # help='use cleaned meshes using reversion of light direction for faulted meshes'
 dset_norm : "2" # help='the L P normlization tyoe of the 3D dataset' choices=["inf", "2", "1", "fro", "no"]
 image_size : 224  # help='the size of the images rendered by the differntibe renderer'
@@ -31,7 +31,7 @@ shape_extractor : "PointNet"   # help='pretrained point cloud mvnetwork to get c
 features_type : "logits"  # help='the type of the features extracted from the feature extractor ( early , middle , late) '
 transform_distance : false  # help='transform the distance to the object as well  '
 screatch_feature_extractor : false  # help='start training the feature extractor from scracth ...applies ONLY if `is_learning_points` == True '
-learning_rate : 0.001  # help='initial learning rate (default: 0.0001)'
+learning_rate : 0.01  # help='initial learning rate (default: 0.0001)'
 weight_decay : 0.01  # help='weight decay for MVTN ... default 0.01'
 momentum : 0.9  # help='momentum (default: 0.9)'
 lr_decay_freq : 30  # help='learning rate decay frequencey(default: 30)'

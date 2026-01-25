@@ -33,7 +33,7 @@ from models.renderer import *
 
 
 from torch.utils.tensorboard import SummaryWriter
-from custom_dataset import ModelNet40, collate_fn, ShapeNetCore, ScanObjectNN
+from custom_dataset import ModelNet40, TeethData, collate_fn, ShapeNetCore, ScanObjectNN
 from rotationNet.mvt_rotnet import RotationNet, AverageMeter, my_accuracy
 from viewGCN.tools.Trainer_mvt import ModelNetTrainer_mvt
 
@@ -66,7 +66,8 @@ def _torchvision_model(model_name: str, pretrained: bool):
         except TypeError:
             return ctor(pretrained=False)
 
-PLOT_SAMPLE_NBS = [242, 7, 549, 112, 34]
+# PLOT_SAMPLE_NBS = [242, 7, 549, 112, 34]
+PLOT_SAMPLE_NBS = [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68]
 
 
 parser = argparse.ArgumentParser(description='MVTN-PyTorch')
@@ -119,7 +120,12 @@ if "modelnet" in setup["data_dir"].lower():
     dset_val = ModelNet40(setup["data_dir"], "test", nb_points=setup["nb_points"], simplified_mesh=setup["simplified_mesh"], cleaned_mesh=setup["cleaned_mesh"], dset_norm=setup["dset_norm"], return_points_saved=setup["return_points_saved"],
                           is_rotated=setup["rotated_test"])
     classes = dset_train.classes
-
+elif "teethdata" in setup["data_dir"].lower():
+    dset_train = TeethData(setup["data_dir"], "train", nb_points=setup["nb_points"], simplified_mesh=setup["simplified_mesh"], cleaned_mesh=setup["cleaned_mesh"], dset_norm=setup["dset_norm"], return_points_saved=setup["return_points_saved"],
+                            is_rotated=setup["rotated_train"])
+    dset_val = TeethData(setup["data_dir"], "test", nb_points=setup["nb_points"], simplified_mesh=setup["simplified_mesh"], cleaned_mesh=setup["cleaned_mesh"], dset_norm=setup["dset_norm"], return_points_saved=setup["return_points_saved"],
+                          is_rotated=setup["rotated_test"])
+    classes = dset_train.classes
 elif "shapenetcore" in setup["data_dir"].lower():
     dset_train = ShapeNetCore(setup["data_dir"], ("train",), setup["nb_points"], load_textures=False,
                               dset_norm=setup["dset_norm"], simplified_mesh=setup["simplified_mesh"])

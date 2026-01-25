@@ -106,6 +106,9 @@ def initialize_setup_gcn(setup):
         if "modelnet" in setup["data_dir"].lower():
             dset_name = "modelnet"
             ckpt_nb = 29
+        if "teethdata" in setup["data_dir"].lower():
+            dset_name = "teethdata"
+            ckpt_nb = 29
         elif "shapenet" in setup["data_dir"].lower():
             dset_name = "shapenet"
             ckpt_nb = 29
