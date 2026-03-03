@@ -39,8 +39,8 @@ class HighPrecisionPointCloudMatcher:
                  use_teaser: bool = False,  # 默认关闭TEASER避免长时间卡住
                  use_fgr: bool = False,  # 默认关闭FGR避免额外耗时
                  sample_points: int = 5000,  # 更小采样加速
-                 cache_cad: bool = False,  # 是否缓存CAD特征，默认关闭以节省内存
-                 max_preload: int = 50):  # 预加载CAD上限，避免一次性占满内存
+                 cache_cad: bool = True,  # 是否缓存CAD特征，默认关闭以节省内存
+                 max_preload: int = 500):  # 预加载CAD上限，避免一次性占满内存
         """
         参数针对牙科口扫优化（单位：mm）
         """
@@ -143,13 +143,18 @@ class HighPrecisionPointCloudMatcher:
                 return fgr_result
 
         distance_threshold = self.feature_radius * 1.5
+        # mutual_filter=False：避免 "Too few correspondences after mutual filter" 警告。
+        # mutual filter 会对每个源点仅保留在目标侧也能反向匹配的对应点，
+        # 当特征空间分布不均匀时极易过滤掉大量对应点并触发 fallback。
+        # 关闭后由 CorrespondenceChecker 本身负责筛选，效果相当且更稳定。
+        # EdgeLength checker 从 0.9 放宽到 0.8，保留更多几何一致的对应点对。
         result = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
-            source, target, source_fpfh, target_fpfh, True,
+            source, target, source_fpfh, target_fpfh, False,
             distance_threshold,
             o3d.pipelines.registration.TransformationEstimationPointToPoint(False),
             3,
             [
-                o3d.pipelines.registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
+                o3d.pipelines.registration.CorrespondenceCheckerBasedOnEdgeLength(0.8),
                 o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(distance_threshold)
             ],
             o3d.pipelines.registration.RANSACConvergenceCriteria(100000, 0.999)
@@ -164,7 +169,7 @@ class HighPrecisionPointCloudMatcher:
         """快速全局配准(FGR)作为 TEASER++ 失败时的回退。"""
         try:
             option = o3d.pipelines.registration.FastGlobalRegistrationOption(
-                maximum_correspondence_distance=self.feature_radius * 1.5,
+                maximum_correspondence_distance=self.feature_radius * 2.0,
                 iteration_number=32
             )
             result = o3d.pipelines.registration.registration_fgr_based_on_feature_matching(
@@ -180,9 +185,10 @@ class HighPrecisionPointCloudMatcher:
                                     target: o3d.geometry.PointCloud,
                                     source_fpfh: o3d.pipelines.registration.Feature,
                                     target_fpfh: o3d.pipelines.registration.Feature) -> Optional[o3d.pipelines.registration.RegistrationResult]:
-        """使用 TEASER++ 做鲁棒全局配准，增加特征对应数量并过滤。"""
+        """使用 TEASER++ 做鲁棒全局配准，避免调用 open3d 的全局配准接口。"""
         try:
             import teaserpp_python as teaser
+            from scipy.spatial import cKDTree
         except Exception:
             return None
 
@@ -192,7 +198,6 @@ class HighPrecisionPointCloudMatcher:
             return None
 
         # kNN 双向匹配，较小 k 加速
-        from scipy.spatial import cKDTree
         k = 2
         src_tree = cKDTree(src_feat)
         tgt_tree = cKDTree(tgt_feat)
@@ -231,11 +236,24 @@ class HighPrecisionPointCloudMatcher:
         transform[:3, :3] = sol.rotation
         transform[:3, 3] = sol.translation
 
-        eval_result = o3d.pipelines.registration.evaluate_registration(
-            source, target, max_correspondence_distance=self.icp_threshold, transformation=transform)
-        eval_result.transformation = transform
-        return eval_result
-    
+        # 使用 numpy + cKDTree 计算匹配质量，避免 open3d 全局评估调用
+        src_transformed = (transform[:3, :3] @ src_points.T + transform[:3, 3:4]).T
+        nn_dist, nn_idx = tgt_tree.query(src_transformed, k=1)
+        inlier_mask = nn_dist < self.icp_threshold
+        if not np.any(inlier_mask):
+            return None
+
+        fitness = float(np.sum(inlier_mask) / len(src_points))
+        inlier_rmse = float(np.sqrt(np.mean(nn_dist[inlier_mask] ** 2)))
+        corr_pairs = np.column_stack((np.nonzero(inlier_mask)[0], nn_idx[inlier_mask])).astype(np.int32)
+
+        result = o3d.pipelines.registration.RegistrationResult()
+        result.transformation = transform
+        result.fitness = fitness
+        result.inlier_rmse = inlier_rmse
+        result.correspondence_set = o3d.utility.Vector2iVector(corr_pairs)
+        return result
+
     def _local_refinement(self,
                          source: o3d.geometry.PointCloud,
                          target: o3d.geometry.PointCloud,
@@ -276,7 +294,7 @@ class HighPrecisionPointCloudMatcher:
         # 假设X轴为对称轴，计算对称性
         if len(points) == 0:
             return 0.0
-            
+
         mirrored = points.copy()
         mirrored[:, 0] = -mirrored[:, 0]  # X轴镜像
         
@@ -309,7 +327,7 @@ class HighPrecisionPointCloudMatcher:
         scan_pcd = self._load_stl(scan_file)
         # print(f"  点数: {len(scan_pcd.points)}")
         
-        print(f"加载CAD模型: {cad_file}")
+
         if cad_file in self._cad_cache:
             cad_pcd, cad_fpfh = self._cad_cache[cad_file]
         else:
@@ -328,19 +346,20 @@ class HighPrecisionPointCloudMatcher:
         # 3. 全局配准（粗匹配）
         # print("执行全局配准 (TEASER++ 优先)...")
         global_result = self._global_registration(scan_prep, cad_pcd, scan_fpfh, cad_fpfh)
-        print(f"  粗匹配 fitness: {global_result.fitness:.4f}")
+        # print(f"  粗匹配 fitness: {global_result.fitness:.4f}")
         
         # 4. 局部精配准
         # print("执行ICP精配准...")
         icp_result = self._local_refinement(scan_prep, cad_pcd, global_result.transformation)
-        print(f"  精匹配 fitness: {icp_result.fitness:.4f}, RMSE: {icp_result.inlier_rmse:.4f}")
+        # print(f"  粗匹配 fitness: {global_result.fitness:.4f},  精匹配 fitness: {icp_result.fitness:.4f}, RMSE: {icp_result.inlier_rmse:.4f}")
         
         # 5. 计算对称性评分（牙科特异性）
-        symmetry_score = self._evaluate_symmetry(scan_prep, cad_pcd, icp_result.transformation)
+        # symmetry_score = self._evaluate_symmetry(scan_prep, cad_pcd, icp_result.transformation)
+        symmetry_score = 0.0
         # print(f"  对称性评分: {symmetry_score:.4f}")
         
         # 6. 综合评分
-        combined_score = (icp_result.fitness * 0.6 + 
+        combined_score = (icp_result.fitness * 0.6 +
                          (1 - min(icp_result.inlier_rmse / self.voxel_size, 1)) * 0.3 +
                          symmetry_score * 0.1)
         
@@ -362,7 +381,7 @@ class HighPrecisionPointCloudMatcher:
         return result
     
     def match_batch(self, 
-                   scan_folder: str, 
+                   scan_folder: str,
                    cad_folder: str,
                    output_json: Optional[str] = None) -> List[MatchResult]:
         """
@@ -393,15 +412,15 @@ class HighPrecisionPointCloudMatcher:
         all_results = []
         
         match_cnt = 0
-        for scan_file in scan_files:
+        for iter, scan_file in enumerate(scan_files):
             print(f"\n{'='*50}")
-            print(f"处理扫描文件: {Path(scan_file).name}")
+            print(f"处理扫描文件: {Path(scan_file).name} [{iter+1}/{len(scan_files)}]")
             print(f"{'='*50}")
             
             # 与所有CAD匹配
             candidates = []
-            for cad_file in cad_files:
-                # print(f"\n匹配候选: {Path(cad_file).name}")
+            for iter, cad_file in enumerate(cad_files):
+                print(f"加载CAD模型: {cad_file} {iter}/{len(cad_files)}")
                 try:
                     result = self.match_single(scan_file, cad_file)
                     candidates.append(result)
@@ -421,13 +440,17 @@ class HighPrecisionPointCloudMatcher:
                 'all_candidates': sorted(candidates, key=lambda x: x.inlier_rmse)
             })
             
-            if scan_file == best_result.cad_file:
+            if scan_file.split("/")[-1] == best_result.cad_file.split("/")[-1]:
                 match_cnt+=1
-            print(f"\n最佳匹配: {Path(best_result.cad_file).name}")
+                print(f"\n【 匹配成功! 】")
+            else:
+                print(f"\n【 匹配失败 】")
+                print(f"原始文件: {Path(scan_file).name}")
+                print(f"最佳匹配: {Path(best_result.cad_file).name}")
             print(f"  Fitness: {best_result.fitness:.4f}")
             print(f"  RMSE: {best_result.inlier_rmse:.4f}mm")
             print(f"  处理时间: {best_result.processing_time:.2f}s")
-        
+            # input()
         print(f"\n总匹配完成: {len(all_results)} / {len(scan_files)}")
         
         # 保存结果
@@ -485,7 +508,7 @@ class HighPrecisionPointCloudMatcher:
                 ]
             }
             output.append(entry)
-        
+
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(output, f, indent=2, ensure_ascii=False)
         print(f"\n结果已保存至: {output_path}")
@@ -500,6 +523,7 @@ def quick_match(scan_folder: str = "scan_stl",
     """
     # 针对口扫数据优化参数（单位mm）
     matcher = HighPrecisionPointCloudMatcher(
+        sample_points=5000,  # 更小采样加速
         voxel_size=0.2,      # 0.05mm高精度
         normal_radius=0.6,    # 法向量估计半径
         feature_radius=1.5,   # FPFH特征半径
@@ -526,19 +550,21 @@ if __name__ == "__main__":
     print("==================")
     print("请将扫描STL文件放入 scan_stl 文件夹")
     print("请将CAD STL文件放入 cad_stl 文件夹")
-    print()
-    
+
     # 检查文件
-    scan_files = glob.glob("scan_stl/*.stl")
-    cad_files = glob.glob("cad_stl/*.stl")
-    
+    scan_path = "SCAN"
+    cad_path = "CAD"
+    # scan_files = glob.glob("scan_stl/*.stl")
+    scan_files = glob.glob("SCAN/*.stl")
+    # cad_files = glob.glob("cad_stl/*.stl")
+    cad_files = glob.glob("CAD/*.stl")
     if not scan_files or not cad_files:
         print(f"扫描文件: {len(scan_files)}个")
         print(f"CAD文件: {len(cad_files)}个")
         print("请确保两个文件夹都包含STL文件后重新运行")
     else:
         # 执行匹配
-        results = quick_match(visualize=True)
+        results = quick_match(scan_path, cad_path, visualize=True)
         
         # 打印摘要
         print("\n" + "="*50)
